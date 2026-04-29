@@ -14,32 +14,13 @@ spec:
       labels:
         {{- include "nfo.selectorLabels" . | nindent 8 }}
     spec:
-      initContainers:
-      - name: migrations
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        imagePullPolicy: {{ .Values.image.pullPolicy }}
+      containers:
+      - name: nfo
         command: ["/bin/sh", "-c"]
         args:
           - |
-            python manage.py makemigrations --noinput
-            python manage.py migrate --noinput
-        env:
-        {{- range .Values.env }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
-        {{- end }}
-        - name: SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "nfo.fullname" . }}
-              key: secret-key
-        volumeMounts:
-        {{- if .Values.persistence.enabled }}
-        - name: data
-          mountPath: {{ .Values.persistence.mountPath }}
-        {{- end }}
-      containers:
-      - name: nfo
+            python manage.py migrate --noinput &&
+            gunicorn nfo_microservice.wsgi:application --bind 0.0.0.0:8000 --workers 2
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         ports:

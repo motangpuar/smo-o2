@@ -9,3 +9,4 @@ cryptography
 django-filter
 django-extensions
 tzdata
+gunicorn

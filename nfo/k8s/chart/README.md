@@ -20,7 +20,8 @@ helm install nfo ./helm-chart \
 ## Upgrade
 
 ```bash
-helm upgrade nfo ./helm-chart
+kubectl create namespace o2
+helm upgrade nfo . --namespace o2
 ```
 
 ## Uninstall
@@ -31,19 +32,19 @@ helm uninstall nfo
 
 ## Configuration
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `replicaCount` | Number of replicas | `1` |
-| `image.repository` | Image repository | `nfo` |
-| `image.tag` | Image tag | `latest` |
-| `service.type` | Service type | `ClusterIP` |
-| `service.port` | Service port | `8000` |
-| `ingress.enabled` | Enable ingress | `false` |
-| `persistence.enabled` | Enable persistence | `true` |
-| `persistence.size` | PVC size | `1Gi` |
-| `config.secretKey` | Django secret key | `changeme-in-production` |
-| `config.debug` | Debug mode | `true` |
-| `config.allowedHosts` | Allowed hosts | `*` |
+| Parameter             | Description        | Default                  |
+| -----------           | -------------      | ---------                |
+| `replicaCount`        | Number of replicas | `1`                      |
+| `image.repository`    | Image repository   | `nfo`                    |
+| `image.tag`           | Image tag          | `latest`                 |
+| `service.type`        | Service type       | `ClusterIP`              |
+| `service.port`        | Service port       | `8000`                   |
+| `ingress.enabled`     | Enable ingress     | `false`                  |
+| `persistence.enabled` | Enable persistence | `true`                   |
+| `persistence.size`    | PVC size           | `1Gi`                    |
+| `config.secretKey`    | Django secret key  | `changeme-in-production` |
+| `config.debug`        | Debug mode         | `true`                   |
+| `config.allowedHosts` | Allowed hosts      | `*`                      |
 
 ## Build and Push Image
 
