@@ -81,13 +81,13 @@ spec:
           {{- toYaml .Values.resources | nindent 10 }}
         livenessProbe:
           httpGet:
-            path: /
+            path: /api/kubernetes-clusters/
             port: http
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /
+            path: /api/kubernetes-clusters/
             port: http
           initialDelaySeconds: 10
           periodSeconds: 5
