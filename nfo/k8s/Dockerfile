@@ -41,10 +41,6 @@ RUN pip install -r requirements.txt
 # Copy project files into the container
 COPY . /app/
 
-RUN python manage.py makemigrations
-
-RUN python manage.py migrate
-
 # Expose port (if necessary)
 EXPOSE 8000
 
