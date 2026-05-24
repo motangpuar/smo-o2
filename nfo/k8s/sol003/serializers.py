@@ -33,6 +33,13 @@ class KubernetesClusterSerializer(serializers.ModelSerializer):
         #fields = ['id', 'cluster_name', 'cluster']
         exclude = ['kubeconfig_data', 'bearer_token', 'client_cert', 'client_key', 'ca_cert']
 
+class KubernetesClusterStatusSerializers(serializers.ModelSerializer):
+    cluster_name = serializers.CharField(source='cluster.name', read_only=True)
+    # Exclude sensitive fields from serialization
+    class Meta:
+        model = KubernetesCluster
+        fields = ['cluster_name', 'api_endpoint', 'connection_status','last_health_check']
+
 class KubernetesClusterCredentialsSerializer(serializers.ModelSerializer):
     """Separate serializer for credential management"""
     kubeconfig_content = serializers.CharField(write_only=True, required=False)

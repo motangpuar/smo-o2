@@ -37,7 +37,8 @@ class KubernetesDeploymentService:
             env = os.environ.copy()
             env['KUBECONFIG'] = temp_kubeconfig
             yield env
-
+        except Exception as e:
+            print(f"Caught error {e}")
         finally:
             if temp_kubeconfig and os.path.exists(temp_kubeconfig):
                 os.unlink(temp_kubeconfig)
@@ -279,6 +280,7 @@ class KubernetesDeploymentService:
 
             if 'kubeconfig' in k8s_config:
                 kubeconfig_content = base64.b64decode(k8s_config['kubeconfig']).decode()
+                #print(kubeconfig_content)
 
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.config', delete=False) as f:
                     f.write(kubeconfig_content)
@@ -307,7 +309,7 @@ class KubernetesDeploymentService:
 
         except Exception as e:
             logger.exception("Failed to setup Kubernetes client")
-            raise
+            pass
 
     def test_connection(self):
         """Test Kubernetes cluster connection"""
@@ -322,6 +324,7 @@ class KubernetesDeploymentService:
 
         except Exception as e:
             logger.error(f"Kubernetes connection test failed: {str(e)}")
+            self.k8s_cluster.last_health_check = timezone.now()
             self.k8s_cluster.connection_status = 'ERROR'
             self.k8s_cluster.save()
             return False

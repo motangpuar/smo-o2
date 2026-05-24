@@ -3,7 +3,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
+from django.core import serializers
 from .services.kubernetes_service import KubernetesDeploymentService
+import base64
 from .models import (
         DeploymentDescriptor,
         NfDeploymentInstance,
@@ -19,6 +21,7 @@ from .serializers import (
         DeploymentDescriptorDetailedSerializer,
         NfDeploymentInstanceDetailedSerializer, KubernetesDeploymentDetailedSerializer,
         KubernetesClusterCredentialsSerializer,
+        KubernetesClusterStatusSerializers,
         )
 
 from .tools.tools import (
@@ -45,7 +48,6 @@ class DeploymentDescriptorViewSet(viewsets.ModelViewSet):
 
         # User sends only values
         values = data.pop('values', None)
-        print(values)
 
         if values and isinstance(values, dict):
             # Expand any dot notation
@@ -78,13 +80,13 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
         if hasattr(instance.descriptor, 'additional_params') and instance.descriptor.additional_params:
             stored_values = instance.descriptor.additional_params.get('values', {})
 
-        print("Stored Value: ",stored_values)
+        logger.info(f"Stored Value: {stored_values}")
         # Get values from instantiation request
 
         request_values = request.data.get('values', {})
         request_values = JSONProcess.expand_dot_notation(self, request_values)
 
-        print(request_values)
+        logger.info(f"Request Values: {request_values}")
 
         # Merge them - request values override stored values
         final_values = {**stored_values, **request_values}
@@ -148,8 +150,6 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
                     request.data
                 )
 
-            print("---->----")
-            print(result)
             if result['success']:
                 instance.instantiation_state = 'INSTANTIATED'
                 instance.deployed_cluster = instance.descriptor.target_cluster
@@ -187,19 +187,17 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
             operation.end_time = timezone.now()
             operation.save()
 
-            print(traceback.print_exc())
+            logger.error(traceback.print_exc())
             raise Exception(result.get('error', 'Deployment failed'))
 
         except Exception as e:
-            print("Error")
+            logger.error("Error")
             instance.instantiation_state = 'ERROR'
             instance.save()
             operation.operation_state = 'FAILED'
             operation.error_details = {'error': str(e)}
             operation.end_time = timezone.now()
             operation.save()
-
-            print(traceback.format_exc())
 
             #return Response(
             #    {'error': f'Deployment failed: {str(e)}'},
@@ -386,8 +384,7 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
             instance.deployment_namespace = namespace
             instance.save()
 
-            print("----------->")
-            print(result)
+            logger.info(result)
 
             return {
                 'success': k8s_deployment.kubernetes_status == 'RUNNING',
@@ -450,7 +447,7 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
                 cleanup_namespace=cleanup_namespace
             )
 
-            print(f"RESULT TERMINATION {result}")
+            logger.info(f"RESULT TERMINATION {result}")
 
             if result['success'] or force:
                 # Clean up database records
@@ -472,7 +469,7 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
                     'message': 'Termination successful'
                 })
             else:
-                print(result)
+                logger.info(result)
                 raise Exception(result.get('error', 'Termination failed'))
 
         except Exception as e:
@@ -506,10 +503,9 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
 
             termination_steps = []
 
-            print("++++++++++++++++++++++++++++++")
-            print(k8s_deployment.id)
-            print(k8s_deployment.helm_release_name)
-            print(instance.deployment_namespace)
+            logger.info(k8s_deployment.id)
+            logger.info(k8s_deployment.helm_release_name)
+            logger.info(instance.deployment_namespace)
 
             # Step 1: Delete Helm release
             if k8s_deployment.helm_release_name:
@@ -518,8 +514,7 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
                     release_name=k8s_deployment.helm_release_name,
                     force=force
                 )
-                print(helm_result)
-                print("++++++++++++++++++++++++++++++")
+                logger.info(helm_result)
                 termination_steps.append({
                     'step': 'helm_release',
                     'success': helm_result.get('success', False),
@@ -551,16 +546,14 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
                     'message': ns_result.get('message', '')
                 })
             # Step 4: Clean up database records
-            print(k8s_deployment.nf_instance)
-            print(k8s_deployment.kubernetes_status)
-            print(k8s_deployment.pk)
-            print(k8s_deployment.id)
+            logger.info(k8s_deployment.nf_instance)
+            logger.info(k8s_deployment.kubernetes_status)
+            logger.info(k8s_deployment.pk)
+            logger.info(k8s_deployment.id)
             k8s_deployment.kubernetes_status = 'TERMINATED'
 
             # Constraint Failed
             k8s_deployment.save()
-
-            print("Did you pass?")
 
             # Determine overall success
             all_success = all(step['success'] for step in termination_steps)
@@ -572,7 +565,7 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
             }
 
         except Exception as e:
-            print(traceback.format_exc())
+            logger.error(traceback.format_exc())
             logger.error(f"Termination failed: {str(e)}")
             if force:
                 return {'success': True, 'message': f'Force terminated despite error: {str(e)}'}
@@ -606,9 +599,8 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
             new_values = JSONProcess.expand_dot_notation(self, new_values)
             #data['additional_params'] = {'values': newvalues}
 
-        print(new_values)
-        print(stored_values)
-        print("**************")
+        logger.info(new_values)
+        logger.info(stored_values)
 
         # Merge values - new values override stored
         final_values = {**stored_values, **new_values}
@@ -629,11 +621,7 @@ class NfDeploymentInstanceViewSet(viewsets.ModelViewSet):
 
         try:
             # Perform the upgrade
-            print(final_values)
-            print('----------------')
             result = self.upgrade_kubernetes(instance, final_values)
-
-            print(result)
 
             if result['success']:
                 # Update stored values if requested
@@ -981,6 +969,27 @@ class KubernetesClusterViewSet(viewsets.ModelViewSet):
     queryset = KubernetesCluster.objects.all()
     serializer_class = KubernetesClusterSerializer
 
+    def list(self, request, pk=None):
+        logger.info(self.serializer_class.data)
+        serialized_data = KubernetesClusterSerializer(self.queryset, many=True)
+        for cluster in self.queryset:
+            k8s_service = KubernetesDeploymentService(cluster)
+            k8s_service.test_connection()
+
+        #json_data = serializers.serialize('json', self.queryset)
+        return Response(serialized_data.data, 200)
+
+    @action(detail=False, methods=['get'])
+    def status(self, request, pk=None):
+        logger.info(self.serializer_class.data)
+        serialized_data = KubernetesClusterStatusSerializers(self.queryset, many=True)
+        for cluster in self.queryset:
+            k8s_service = KubernetesDeploymentService(cluster)
+            k8s_service.test_connection()
+
+        #json_data = serializers.serialize('json', self.queryset)
+        return Response(serialized_data.data, 200)
+
     @action(detail=True, methods=['post'])
     def set_credentials(self, request, pk=None):
         """Set Kubernetes credentials"""
@@ -1014,7 +1023,6 @@ class KubernetesClusterViewSet(viewsets.ModelViewSet):
             return Response({
                 'connected': False,
                 'error': str(e),
-                'skunk': 'skunk',
             }, status=500)
 
     @action(detail=True, methods=['get'])
@@ -1259,12 +1267,9 @@ class KubernetesOperation(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def query_resource(self, request, cloud_id=None):
-        print("Calling Query Resource")
-
         instance = self.get_object()
-
-        print(instance.prometheus_endpoint)
-
+        logger.info("Calling Query Resource")
+        logger.info(f"Prometheus endpoint: {instance.prometheus_endpoint}")
         metrics = KubernetesResourceMetrics(instance.prometheus_endpoint)
         summary = metrics.get_cluster_summary()
 
@@ -1273,9 +1278,6 @@ class KubernetesOperation(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def homing(self, request):
         """Find best cluster for deployment with specific requirements."""
-
-        #skunk = request.data.copy()
-        #print(skunk)
 
         # Get requirements from request (optional)
         cpu_needed = request.data.get('cpu_cores', 1)  # Default 1 core
